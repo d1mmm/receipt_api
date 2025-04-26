@@ -1,4 +1,3 @@
-import uvicorn
 from fastapi import FastAPI, Depends, HTTPException, Query, Response, status
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
@@ -192,5 +191,6 @@ def public_receipt(
     return text
 
 
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+def run():
+    import uvicorn
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
