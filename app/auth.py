@@ -5,7 +5,8 @@ from jose import jwt, JWTError
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status, Cookie
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from . import crud, database
 
 SECRET_KEY = os.getenv("JWT_SECRET")
@@ -29,9 +30,9 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-def get_current_user(
+async def get_current_user(
     access_token_cookie: str = Cookie(None),
-    db: Session = Depends(database.get_db),
+    db: AsyncSession = Depends(database.get_db),
 ):
     if access_token_cookie is None:
         raise HTTPException(
@@ -46,7 +47,7 @@ def get_current_user(
             raise JWTError()
     except JWTError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Could not validate credentials")
-    user = crud.get_user_by_username(db, username)
+    user = await crud.get_user_by_username(db, username)
     if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
     return user

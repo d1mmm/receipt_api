@@ -1,23 +1,27 @@
-from typing import Dict, Any, List
+from typing import Dict, Any
+from jinja2 import Template
+
+_receipt_template = Template(r"""
+{{ "=== RECEIPT ===".center(width) }}
+{% for item in products %}
+{{ ("%0.2f x %0.2f" % (item.quantity, item.price)).rjust(width) }}
+{{ (item.name + "  " + "%0.2f" % item.total).ljust(width) }}
+{{ "-" * width }}
+{% endfor %}
+{{ ("TOTAL: " + "%0.2f" % total).rjust(width) }}
+{{ ("Payment (" + payment.type.capitalize() + "): " + "%0.2f" % payment.amount).rjust(width) }}
+{{ ("CHANGE: " + "%0.2f" % rest).rjust(width) }}
+{{ "=" * width }}
+{{ created_at.strftime("%Y-%m-%d %H:%M").center(width) }}
+{{ "Thank you for your purchase!".center(width) }}
+""")
 
 def format_receipt(data: Dict[str, Any], width: int = 40) -> str:
-    lines: List[str] = []
-    center = lambda s: s.center(width)
-
-    lines.append(center("=== ЧЕК ==="))
-    for item in data["products"]:
-        name = item["name"]
-        qty = f"{item['quantity']:.2f}"
-        price = f"{item['price']:.2f}"
-        total = f"{item['total']:.2f}"
-        lines.append(f"{qty} x {price}".rjust(width))
-        lines.append(f"{name} {total}".ljust(width))
-        lines.append("-" * width)
-    lines.append(f"СУМА: {data['total']:.2f}".rjust(width))
-    lines.append(f"{data['payment']['type'].value.capitalize()}: {data['payment']['amount']:.2f}".rjust(width))
-    lines.append(f"Решта: {data['rest']:.2f}".rjust(width))
-    lines.append("=" * width)
-    dt = data["created_at"].strftime("%d.%m.%Y %H:%M")
-    lines.append(center(dt))
-    lines.append(center("Дякуємо за покупку!"))
-    return "\n".join(lines)
+    return _receipt_template.render(
+        products=data["products"],
+        payment=data["payment"],
+        total=data["total"],
+        rest=data["rest"],
+        created_at=data["created_at"],
+        width=width
+    )

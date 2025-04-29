@@ -1,8 +1,11 @@
-def test_public_receipt_view(client, login_user):
-    login_res = login_user("u3", "pass3")
+import pytest
+
+@pytest.mark.anyio
+async def test_public_receipt_view(client, register_and_login):
+    login_res = await register_and_login("u3", "pass3")
     assert login_res.status_code == 200
 
-    create_res = client.post(
+    create_res = await client.post(
         "/receipts",
         json={
             "products": [{"name": "X", "price": 2.0, "quantity": 3}],
@@ -11,6 +14,6 @@ def test_public_receipt_view(client, login_user):
     )
     receipt_id = create_res.json()["id"]
 
-    pub_res = client.get(f"/public/receipts/{receipt_id}")
+    pub_res = await client.get(f"/public/receipts/{receipt_id}")
     assert pub_res.status_code == 200
-    assert "СУМА" in pub_res.text
+    assert "TOTAL" in pub_res.text

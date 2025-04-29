@@ -1,65 +1,106 @@
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from . import models, schemas, auth
 from decimal import Decimal
-from datetime import datetime
 
-def get_user_by_username(db: Session, username: str):
-    return db.query(models.User).filter(models.User.username == username).first()
 
-def create_user(db: Session, user: schemas.UserCreate):
+async def get_user_by_username(db: AsyncSession, username: str):
+    q = await db.execute(select(models.User).where(models.User.username == username))
+    return q.scalar_one_or_none()
+
+
+async def create_user(db: AsyncSession, user: schemas.DTO_UserCreate):
     hashed = auth.get_password_hash(user.password)
-    db_user = models.User(username=user.username, full_name=user.full_name, hashed_password=hashed)
+    db_user = models.User(
+        username=user.username,
+        full_name=user.full_name,
+        hashed_password=hashed
+    )
     db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
+    await db.commit()
+    await db.refresh(db_user)
     return db_user
 
-def create_receipt(db: Session, user_id: int, receipt_in: schemas.ReceiptCreate):
+
+async def create_receipt(db: AsyncSession, user_id: int, rc: schemas.DTO_ReceiptCreate):
     total = Decimal(0)
-    db_receipt = models.Receipt(owner_id=user_id,
-                                payment_type=receipt_in.payment.type,
-                                payment_amount=receipt_in.payment.amount)
+    db_receipt = models.Receipt(
+        owner_id=user_id,
+        payment_type=rc.payment.type,
+        payment_amount=rc.payment.amount
+    )
     db.add(db_receipt)
-    for p in receipt_in.products:
-        line_total = p.price * p.quantity
-        total += line_total
-        item = models.ReceiptItem(receipt=db_receipt,
-                                  name=p.name,
-                                  price=p.price,
-                                  quantity=p.quantity)
+    await db.flush()
+    for p in rc.products:
+        line = p.price * p.quantity
+        total += line
+        item = models.ReceiptItem(
+            receipt_id=db_receipt.id,
+            name=p.name,
+            price=p.price,
+            quantity=p.quantity
+        )
         db.add(item)
-    db.commit()
-    db.refresh(db_receipt)
-    rest = receipt_in.payment.amount - total
+    await db.commit()
+    await db.refresh(db_receipt)
+    rest = rc.payment.amount - total
     return {
         "id": db_receipt.id,
         "created_at": db_receipt.created_at,
-        "products": [{"name": p.name, "price": p.price, "quantity": p.quantity, "total": p.price * p.quantity}
-                     for p in receipt_in.products],
-        "payment": receipt_in.payment,
+        "products": [
+            {"name": p.name, "price": p.price, "quantity": p.quantity, "total": p.price * p.quantity}
+            for p in rc.products
+        ],
+        "payment": rc.payment,
         "total": total,
         "rest": rest
     }
 
-def get_receipts(db: Session, user_id: int, skip: int = 0, limit: int = 10,
-                 date_from: datetime = None, date_to: datetime = None,
-                 min_total: Decimal = None, payment_type: str = None):
-    q = db.query(models.Receipt).filter(models.Receipt.owner_id == user_id)
+
+async def get_receipts(
+        db: AsyncSession,
+        user_id: int,
+        skip: int = 0,
+        limit: int = 10,
+        date_from=None,
+        date_to=None,
+        min_total=None,
+        payment_type=None
+):
+    stmt = (
+        select(models.Receipt)
+        .options(selectinload(models.Receipt.items))  # <-- eager-load items
+        .where(models.Receipt.owner_id == user_id)
+    )
     if date_from:
-        q = q.filter(models.Receipt.created_at >= date_from)
+        stmt = stmt.where(models.Receipt.created_at >= date_from)
     if date_to:
-        q = q.filter(models.Receipt.created_at <= date_to)
-    if min_total:
-        q = (
-            q.join(models.ReceiptItem)
+        stmt = stmt.where(models.Receipt.created_at <= date_to)
+    if payment_type:
+        stmt = stmt.where(models.Receipt.payment_type == payment_type)
+    if min_total is not None:
+        stmt = (
+            stmt.join(models.ReceiptItem)
             .group_by(models.Receipt.id)
             .having(func.sum(models.ReceiptItem.price * models.ReceiptItem.quantity) >= min_total)
         )
     if payment_type:
-        q = q.filter(models.Receipt.payment_type == payment_type)
-    return q.offset(skip).limit(limit).all()
+        stmt = stmt.offset(skip).limit(limit)
 
-def get_receipt_by_id(db: Session, user_id: int, receipt_id: int):
-    return db.query(models.Receipt).filter(models.Receipt.owner_id == user_id,
-                                           models.Receipt.id == receipt_id).first()
+    res = await db.execute(stmt)
+    return res.scalars().all()
+
+
+async def get_receipt_by_id(db: AsyncSession, user_id: int, receipt_id: int):
+    stmt = (
+        select(models.Receipt)
+        .options(selectinload(models.Receipt.items))
+        .where(
+            models.Receipt.owner_id == user_id,
+            models.Receipt.id == receipt_id
+        )
+    )
+    res = await db.execute(stmt)
+    return res.scalar_one_or_none()

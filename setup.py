@@ -19,7 +19,7 @@ def load_requirements(fname: str) -> list:
 setup(
     name='receipt_api',
     version='0.1.0',
-    description='FastAPI-based REST API for creating and viewing receipts with user auth',
+    description='FastAPI-based ASYNC REST API for creating and viewing receipts with user auth',
     long_description=long_description,
     long_description_content_type='text/markdown',
     url='https://github.com/d1mmm/receipt_api',

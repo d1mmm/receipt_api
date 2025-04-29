@@ -1,57 +1,58 @@
+import os
+import sys
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, StaticPool
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from sqlalchemy.pool import StaticPool
+from httpx import AsyncClient, ASGITransport
 
-from app.database import Base, get_db
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from app.main import app
+from app.database import Base, get_db
 
-engine = create_engine(
-    "sqlite:///:memory:",
+@pytest.fixture(scope="session")
+def anyio_backend():
+    return "asyncio"
+
+DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+engine = create_async_engine(
+    DATABASE_URL,
     connect_args={"check_same_thread": False},
-    poolclass=StaticPool
+    poolclass=StaticPool,
+    echo=False,
 )
 
-TestingSessionLocal = sessionmaker(
-    autocommit=False, autoflush=False, bind=engine
-)
+AsyncSessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False)
 
 @pytest.fixture(scope="session", autouse=True)
-def init_db():
-    Base.metadata.create_all(bind=engine)
+async def prepare_db():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
     yield
-    Base.metadata.drop_all(bind=engine)
+    await engine.dispose()
 
-# Override dependency
-def override_get_db():
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+async def override_get_db():
+    async with AsyncSessionLocal() as session:
+        yield session
 
 app.dependency_overrides[get_db] = override_get_db
 
 @pytest.fixture
-def client():
-    return TestClient(app)
+async def client():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
+        yield ac
 
 @pytest.fixture
-def register_user(client):
-    def _register(username: str = "user", full_name: str = "User", password: str = "pass"):
-        return client.post(
+async def register_and_login(client):
+    async def _rl(username: str = "user", password: str = "pass"):
+        await client.post(
             "/register",
-            json={"username": username, "full_name": full_name, "password": password}
+            json={"username": username, "full_name": "User", "password": password}
         )
-    return _register
-
-@pytest.fixture
-def login_user(client, register_user):
-    def _login(username: str = "user", password: str = "pass"):
-        # ensure user exists
-        register_user(username, "User", password)
-        return client.post(
+        return await client.post(
             "/login",
             json={"username": username, "password": password}
         )
-    return _login
+    return _rl

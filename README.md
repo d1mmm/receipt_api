@@ -1,8 +1,8 @@
 # Receipt API
 
-**Tech stack:** Python 3.8, FastAPI, SQLAlchemy, PostgreSQL, JWT, Pydantic
+**Tech stack:** Python 3.8, FastAPI, SQLAlchemy, PostgresSQL, JWT, Pydantic
 
-A simple REST-service for user registration/login and creating/viewing sales receipts, with support for:
+A simple async REST-service for user registration/login and creating/viewing sales receipts, with support for:
 
 - JWT-based auth (stored in HttpOnly cookie)  
 - Decimal-accurate money fields  
@@ -15,7 +15,7 @@ A simple REST-service for user registration/login and creating/viewing sales rec
 ## Prerequisites
 
 - Python 3.8 or newer  
-- PostgreSQL (or SQLite for quick tests)
+- PostgresSQL (or SQLite for quick tests)
 ---
 
 ## Installation
@@ -43,7 +43,7 @@ A simple REST-service for user registration/login and creating/viewing sales rec
 5. **Configure environment**
    *Create a file named .env in the project root with*
    ```bash
-   DATABASE_URL=postgresql://db_user:db_pass@localhost:5432/your_db
+   DATABASE_URL=postgresql+asyncpg://db_user:db_pass@localhost:5432/your_db
    JWT_SECRET=your_super_secret_key
 
 ## Running the service
